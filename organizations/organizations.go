@@ -1,7 +1,0 @@
-package organizations
-
-import {
-	"fmt"
-}
-
-
