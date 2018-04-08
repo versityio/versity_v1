@@ -27,7 +27,7 @@ type record struct {
 	Owner      string `json:"owner"`		//Owner email of the record
 }
 
-var numArgs int = 8
+var numArgs int = 9
 
 // ===================================================================================
 // Main
