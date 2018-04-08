@@ -35,7 +35,7 @@ var numArgs int = 8
 func main() {
 	err := shim.Start(new(VersityChaincode))
 	if err != nil {
-		fmt.Printf("Error starting Simple chaincode: %s", err)
+		fmt.Printf("Error starting Versity chaincode: %s", err)
 	}
 }
 
@@ -154,7 +154,7 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 	}
 
 	// === Save record to state ===
-	err = stub.PutState(recordId, recordJSONasBytes)
+	err = stub.PutState(args[0], recordJSONasBytes)
 	if err != nil {
 		return shim.Error(err.Error())
 	}
@@ -233,7 +233,7 @@ func (t *VersityChaincode) queryRecordsByOwner(stub shim.ChaincodeStubInterface,
 // If this is not desired, follow the queryRecordsForOwner example for parameterized queries.
 // Only available on state databases that support rich query (e.g. CouchDB)
 // =========================================================================================
-func (t *SimpleChaincode) queryRecords(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+func (t *VersityChaincode) queryRecords(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 
 	//   0
 	// "queryString"
@@ -296,7 +296,7 @@ func getQueryResultForQueryString(stub shim.ChaincodeStubInterface, queryString 
 	return buffer.Bytes(), nil
 }
 
-func (t *SimpleChaincode) getHistoryForRecord(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+func (t *VersityChaincode) getHistoryForRecord(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 
 	if len(args) < 1 {
 		return shim.Error("Incorrect number of arguments. Expecting 1")
