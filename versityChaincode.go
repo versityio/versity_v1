@@ -24,8 +24,15 @@ type record struct {
 	Degree     string `json:"degree"`		//Degree type. ex. "Bachelor of Science in Computer Science"
 	GPA        string `json:"gpa"`  		//GPA. ex. 4.0, 2.0
 	MajorGPA   string `json:"majorGpa"`	    //Major GPA. ex. 4.0, 2.0
-	Owner      string `json:"owner"`		//Owner email of the record
 }
+
+type recordWithPermissions struct {
+	Record     record
+	Owner      string `json:"owner"`		//Owner of the record as a hash
+	Viewers    string `json:"viewers"`		//Comma delimited list of who can view this record, including employers, as hash values
+}
+
+
 
 var numArgs int = 9
 
@@ -56,6 +63,8 @@ func (t *VersityChaincode) Invoke(stub shim.ChaincodeStubInterface) peer.Respons
 		return t.initRecord(stub, args)
 	} else if function == "readRecord" { //read a record
 		return t.readRecord(stub, args)
+	} else if function == "addViewerToRecords" { //grant permission for an employer to view a record(s)
+		return t.addViewerToRecords(stub, args)
 	} else if function == "queryRecordsByOwner" { //find records for owner X using rich query
 		return t.queryRecordsByOwner(stub, args)
 	} else if function == "queryRecords" { //find records based on an ad hoc rich query
@@ -74,21 +83,8 @@ func (t *VersityChaincode) Invoke(stub shim.ChaincodeStubInterface) peer.Respons
 func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	var err error
 
-	//type record struct {
-	//	ObjectType string `json:"docType"` 		//docType is used to distinguish the various types of objects in state database
-	//	FirstName  string `json:"firstName"`    //Name of the student
-	//	LastName   string `json:"lastName"`    	//Name of the student
-	//	ID         string `json:"id"`			//Student ID
-	//	University string `json:"university"`	//University
-	//	Degree     string `json:"degree"`		//Degree type. ex. "Bachelor of Science in Computer Science"
-	//	GPA        string `json:"gpa"`  		//GPA stored as float. ex. 4.0, 2.0
-	//	MajorGPA   string `json:"majorGpa"`	//Major GPA stored as float. ex. 4.0, 2.0
-	//	Owner      string `json:"owner"`		//Owner email of the record
-	//}
-
-
 	//  0      1        2       3                         4                                     5                         6      7          8
-	// "32", "dylan", "bryan", "200049641", "North Carolina State University", "Bachelor of Science in Computer Science", "4.0", "4.0", "dbryan@ncsu.edu"
+	// "32", "dylan", "bryan", "200049641", "North Carolina State University", "Bachelor of Science in Computer Science", "4.0", "4.0", "HASH12345"
 	if len(args) != numArgs {
 		return shim.Error("Incorrect number of arguments. Expecting 8")
 	}
@@ -108,20 +104,22 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 		return shim.Error("4th argument must be a non-empty string")
 	}
 	if len(args[4]) <= 0 {
-		return shim.Error("4th argument must be a non-empty string")
+		return shim.Error("5th argument must be a non-empty string")
 	}
 	if len(args[5]) <= 0 {
-		return shim.Error("4th argument must be a non-empty string")
+		return shim.Error("6th argument must be a non-empty string")
 	}
 	if len(args[6]) <= 0 {
-		return shim.Error("4th argument must be a non-empty string")
+		return shim.Error("7th argument must be a non-empty string")
 	}
 	if len(args[7]) <= 0 {
-		return shim.Error("4th argument must be a non-empty string")
+		return shim.Error("8th argument must be a non-empty string")
 	}
 	if len(args[8]) <= 0 {
-		return shim.Error("4th argument must be a non-empty string")
+		return shim.Error("9th argument must be a non-empty string")
 	}
+
+
 	recordId, err := strconv.Atoi(args[0])
 	if err != nil {
 		return shim.Error("3rd argument must be a numeric string")
@@ -134,7 +132,7 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 	degree := strings.ToLower(args[5])
 	gpa := strings.ToLower(args[6])
 	majorGpa := strings.ToLower(args[7])
-	owner := strings.ToLower(args[8])
+	owner := args[8] //hash passed in based on username and pw hash form cookie
 
 	// ==== Check if record already exists ====
 	recordAsBytes, err := stub.GetState(args[0])
@@ -147,8 +145,10 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 
 	// ==== Create record object and marshal to JSON ====
 	objectType := "record"
-	record := &record{objectType, recordId, firstName, lastName, id, university, degree, gpa, majorGpa, owner}
-	recordJSONasBytes, err := json.Marshal(record)
+	//viewers are blank on creation, owners must grant users permission to view
+	record := &record{objectType, recordId, firstName, lastName, id, university, degree, gpa, majorGpa}
+	recordWithPermissions := &recordWithPermissions{*record, owner, ""}
+	recordJSONasBytes, err := json.Marshal(recordWithPermissions)
 	if err != nil {
 		return shim.Error(err.Error())
 	}
@@ -158,6 +158,8 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 	if err != nil {
 		return shim.Error(err.Error())
 	}
+
+	//TODO: add index to find records by owner
 
 	// ==== Record saved. Return success ====
 	//fmt.Println("- end init record")
@@ -185,8 +187,94 @@ func (t *VersityChaincode) readRecord(stub shim.ChaincodeStubInterface, args []s
 		return shim.Error(jsonResp)
 	}
 
+	//TODO: right now this returns the tx id, we need it to return the normal record struct
+
 	return shim.Success(valAsbytes)
 }
+
+//
+// private function
+//
+func addViewer(stub shim.ChaincodeStubInterface, recordId, owner, viewer string) bool {
+	var recordWrapper recordWithPermissions
+
+	if len(owner) <= 0 || len(viewer) <= 0 {
+		return false
+	}
+
+	valAsBytes, err := stub.GetState(recordId)
+	if err != nil || valAsBytes == nil {
+		return false
+	}
+
+	err = json.Unmarshal(valAsBytes, &recordWrapper)
+	if err != nil {
+		return false
+	}
+
+	if len(recordWrapper.Owner) > 0 && recordWrapper.Owner == owner {
+		//if passed in owner is owner of this record
+		viewers := recordWrapper.Viewers
+		viewersArray := strings.Split(viewers, ",")
+		for i := range viewersArray {
+			if viewersArray[i] == viewer {
+				//viewer already has access so return true
+				return true
+			}
+		}
+		//if viewer doesnt already have access then add, save and return true
+		viewersArray = append(viewersArray, viewer)
+ 		recordWrapper.Viewers = strings.Join(viewersArray, ",")
+ 		recordJSONAsBytes, err := json.Marshal(recordWrapper)
+ 		//TODO errer hanling
+ 		if err != nil {
+ 			return false
+		}
+ 		err = stub.PutState(recordId, recordJSONAsBytes)
+ 		//todo record handling
+		if err != nil {
+			return false
+		}
+		return true
+		//strings.Join
+	} else {
+		return false
+	}
+
+
+
+}
+
+func (t *VersityChaincode) addViewerToRecords(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+
+	if len(args) != 3 {
+		return shim.Error("Incorrect number of arguments. Expecting 3")
+	}
+
+	records := args[0] //commalist of records to add viewers to
+	owner := args[1]   //owner of records
+	viewer := args[2]  // viewer to add
+
+	recordIdArray := strings.Split(records, ",")
+
+	response := ""
+	for i := range recordIdArray {
+		result := addViewer(stub, recordIdArray[i], owner, viewer)
+		if result == false{
+			response += ("Unable to add viewer to record: " + recordIdArray[i] + ". ")
+		}
+	}
+
+	//TODO: add index for viewer so that they can get records by viewer
+
+	if response == "" {
+		return shim.Success(nil)
+	} else {
+		return shim.Error("Error(s): " + response)
+	}
+
+}
+
 
 // =======Rich queries =========================================================================
 // Two examples of rich queries are provided below (parameterized query and ad hoc query).
