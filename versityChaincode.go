@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/hyperledger/fabric/core/chaincode/shim"
-	peer "github.com/hyperledger/fabric/protos/peer"
+	"github.com/hyperledger/fabric/protos/peer"
 	"fmt"
 	"strings"
 	"strconv"
@@ -13,6 +13,8 @@ import (
 
 type VersityChaincode struct {
 }
+
+var initNumArgs int = 9
 
 type record struct {
 	ObjectType string `json:"docType"` 		//docType is used to distinguish the various types of objects in state database
@@ -29,12 +31,9 @@ type record struct {
 type recordWithPermissions struct {
 	Record     record
 	Owner      string `json:"owner"`		//Owner of the record as a hash
+	Validated  bool   `json:"validated"`    //Initially set to false until a university validates the record
 	Viewers    string `json:"viewers"`		//Comma delimited list of who can view this record, including employers, as hash values
 }
-
-
-
-var numArgs int = 9
 
 // ===================================================================================
 // Main
@@ -63,6 +62,8 @@ func (t *VersityChaincode) Invoke(stub shim.ChaincodeStubInterface) peer.Respons
 		return t.initRecord(stub, args)
 	} else if function == "readRecord" { //read a record
 		return t.readRecord(stub, args)
+	} else if function == "validateRecord" { //grant permission for an employer to view a record(s)
+		return t.validateRecord(stub, args)
 	} else if function == "addViewerToRecords" { //grant permission for an employer to view a record(s)
 		return t.addViewerToRecords(stub, args)
 	} else if function == "queryRecordsByOwner" { //find records for owner X using rich query
@@ -84,8 +85,8 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 	var err error
 
 	//  0      1        2       3                         4                                     5                         6      7          8
-	// "32", "dylan", "bryan", "200049641", "North Carolina State University", "Bachelor of Science in Computer Science", "4.0", "4.0", "HASH12345"
-	if len(args) != numArgs {
+	// "32", "dylan", "bryan", "200049641", "North Carolina State University", "Bachelor of Science in Computer Science", "4.0", "4.0", "OWNERHASH12345"
+	if len(args) != initNumArgs {
 		return shim.Error("Incorrect number of arguments. Expecting 8")
 	}
 
@@ -147,7 +148,7 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 	objectType := "record"
 	//viewers are blank on creation, owners must grant users permission to view
 	record := &record{objectType, recordId, firstName, lastName, id, university, degree, gpa, majorGpa}
-	recordWithPermissions := &recordWithPermissions{*record, owner, ""}
+	recordWithPermissions := &recordWithPermissions{*record, owner, false, ""}
 	recordJSONasBytes, err := json.Marshal(recordWithPermissions)
 	if err != nil {
 		return shim.Error(err.Error())
@@ -192,6 +193,45 @@ func (t *VersityChaincode) readRecord(stub shim.ChaincodeStubInterface, args []s
 	return shim.Success(valAsbytes)
 }
 
+func (t *VersityChaincode) validateRecord(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+	//args needed: recordId,
+	if len(args) != 1 {
+		return shim.Error("Incorrect number of arguments")
+	}
+
+	recordId := args[0]
+
+	valAsBytes, err := stub.GetState(recordId) //get the record from chaincode state
+	if err != nil {
+		return shim.Error("Failed to get state for Record ID: " + recordId)
+	} else if valAsBytes == nil {
+		return shim.Error("Record does not exist")
+	}
+
+	var recordWrapper recordWithPermissions
+	err = json.Unmarshal(valAsBytes, &recordWrapper)
+	if err != nil {
+		return shim.Error("Invalid record type. Unable to get record from ledger.")
+	}
+
+	if recordWrapper.Validated {
+		return shim.Success([]byte("Record already validated!"))
+	}
+
+	recordWrapper.Validated = true
+	recordJSONAsBytes, err := json.Marshal(recordWrapper)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+	err = stub.PutState(recordId, recordJSONAsBytes)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	return shim.Success(nil)
+
+}
+
 //
 // private function
 //
@@ -226,17 +266,14 @@ func addViewer(stub shim.ChaincodeStubInterface, recordId, owner, viewer string)
 		viewersArray = append(viewersArray, viewer)
  		recordWrapper.Viewers = strings.Join(viewersArray, ",")
  		recordJSONAsBytes, err := json.Marshal(recordWrapper)
- 		//TODO errer hanling
  		if err != nil {
  			return false
 		}
  		err = stub.PutState(recordId, recordJSONAsBytes)
- 		//todo record handling
 		if err != nil {
 			return false
 		}
 		return true
-		//strings.Join
 	} else {
 		return false
 	}
