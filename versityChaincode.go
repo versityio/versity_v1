@@ -171,11 +171,12 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 // readRecord - read a record from chaincode state
 // ===============================================
 func (t *VersityChaincode) readRecord(stub shim.ChaincodeStubInterface, args []string) peer.Response {
-	var recordId, jsonResp string
+	var recordId, requester, jsonResp string
+	var recordWrapper recordWithPermissions
 	var err error
 
-	if len(args) != 1 {
-		return shim.Error("Incorrect number of arguments. Expecting ID of the record to query")
+	if len(args) != 2 {
+		return shim.Error("Incorrect number of arguments. Expecting ID of the record to query and the Requester's ID")
 	}
 
 	recordId = args[0]
@@ -188,9 +189,39 @@ func (t *VersityChaincode) readRecord(stub shim.ChaincodeStubInterface, args []s
 		return shim.Error(jsonResp)
 	}
 
-	//TODO: right now this returns the tx id, we need it to return the normal record struct
+	err = json.Unmarshal(valAsbytes, &recordWrapper)
+	if err != nil {
+		return shim.Error("Invalid record type. Unable to get record from ledger.")
+	}
 
-	return shim.Success(valAsbytes)
+	//check if owner requested
+	if requester == recordWrapper.Owner {
+		record, err := json.Marshal(recordWrapper.Record)
+		if err != nil {
+			shim.Error(err.Error())
+		} else if record == nil {
+			shim.Error(err.Error())
+		}
+		return shim.Success(record)
+	}
+
+	//Check viewers for permission
+	if len(recordWrapper.Viewers) > 0 {
+		viewersArray := strings.Split(recordWrapper.Viewers, ",")
+		for i := range viewersArray {
+			if viewersArray[i] == requester {
+				record, err := json.Marshal(recordWrapper.Record)
+				if err != nil {
+					shim.Error(err.Error())
+				} else if record == nil {
+					shim.Error(err.Error())
+				}
+				return shim.Success(record)
+			}
+		}
+	}
+
+	return shim.Error("Invalid Requester")
 }
 
 func (t *VersityChaincode) validateRecord(stub shim.ChaincodeStubInterface, args []string) peer.Response {
