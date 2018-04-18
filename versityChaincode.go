@@ -129,7 +129,7 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 	degree := strings.ToLower(args[5])
 	gpa := strings.ToLower(args[6])
 	majorGpa := strings.ToLower(args[7])
-	owner := args[8] //hash passed in
+	owner := strings.ToLower(args[8]) //owner unique signature
 
 	// ==== Check if record already exists ====
 	recordAsBytes, err := stub.GetState(args[0])
@@ -187,6 +187,8 @@ func (t *VersityChaincode) readRecord(stub shim.ChaincodeStubInterface, args []s
 	if err != nil {
 		return shim.Error("1st argument must be a numeric string")
 	}
+
+	requester = strings.ToLower(args[1])
 
 	valAsbytes, err := stub.GetState(recordId) //get the record from chaincode state
 	if err != nil {
