@@ -183,7 +183,7 @@ func (t *VersityChaincode) readRecord(stub shim.ChaincodeStubInterface, args []s
 	}
 
 	recordId = args[0]
-	recordIdInt, err := strconv.Atoi(args[0])
+	_, err = strconv.Atoi(args[0])
 	if err != nil {
 		return shim.Error("1st argument must be a numeric string")
 	}
