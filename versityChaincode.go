@@ -87,7 +87,7 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 	//  0      1        2       3                         4                                     5                         6      7          8
 	// "32", "dylan", "bryan", "200049641", "North Carolina State University", "Bachelor of Science in Computer Science", "4.0", "4.0", "OWNERHASH12345"
 	if len(args) != initNumArgs {
-		return shim.Error("Incorrect number of arguments. Expecting 8")
+		return shim.Error("Incorrect number of arguments. Expecting 9")
 	}
 
 	// ==== Input sanitation ====
@@ -123,7 +123,7 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 
 	recordId, err := strconv.Atoi(args[0])
 	if err != nil {
-		return shim.Error("3rd argument must be a numeric string")
+		return shim.Error("1st argument must be a numeric string")
 	}
 
 	firstName := strings.ToLower(args[1])
@@ -133,7 +133,7 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 	degree := strings.ToLower(args[5])
 	gpa := strings.ToLower(args[6])
 	majorGpa := strings.ToLower(args[7])
-	owner := args[8] //hash passed in based on username and pw hash form cookie
+	owner := args[8] //hash passed in
 
 	// ==== Check if record already exists ====
 	recordAsBytes, err := stub.GetState(args[0])
@@ -179,7 +179,17 @@ func (t *VersityChaincode) readRecord(stub shim.ChaincodeStubInterface, args []s
 		return shim.Error("Incorrect number of arguments. Expecting ID of the record to query and the Requester's ID")
 	}
 
-	recordId = args[0]
+	if len(args[0]) <= 0 {
+		return shim.Error("1st argument must be a non-empty string")
+	}
+
+	if len(args[1]) <= 0 {
+		return shim.Error("2nd argument must be a non-empty string")
+	}
+
+	recordId = strconv.Atoi(args[0])
+
+
 	valAsbytes, err := stub.GetState(recordId) //get the record from chaincode state
 	if err != nil {
 		jsonResp = "{\"Error\":\"Failed to get state for " + recordId + "\"}"
@@ -221,7 +231,7 @@ func (t *VersityChaincode) readRecord(stub shim.ChaincodeStubInterface, args []s
 		}
 	}
 
-	return shim.Error("Invalid Requester")
+	return shim.Error("Invalid Requester: Owner is " + recordWrapper.Owner)
 }
 
 func (t *VersityChaincode) validateRecord(stub shim.ChaincodeStubInterface, args []string) peer.Response {
