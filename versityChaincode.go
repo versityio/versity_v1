@@ -14,7 +14,7 @@ import (
 type VersityChaincode struct {
 }
 
-var initNumArgs int = 9
+var initNumArgs = 9
 
 type record struct {
 	ObjectType string `json:"docType"` 		//docType is used to distinguish the various types of objects in state database
@@ -30,9 +30,9 @@ type record struct {
 
 type recordWithPermissions struct {
 	Record     record
-	Owner      string `json:"owner"`		//Owner of the record as a hash
+	Owner      string `json:"owner"`		//Owner of the record
 	Validated  bool   `json:"validated"`    //Initially set to false until a university validates the record
-	Viewers    string `json:"viewers"`		//Comma delimited list of who can view this record, including employers, as hash values
+	Viewers    string `json:"viewers"`		//Comma delimited list of who can view this record, including employers
 }
 
 // ===================================================================================
@@ -55,7 +55,6 @@ func (t *VersityChaincode) Init(stub shim.ChaincodeStubInterface) peer.Response 
 // ========================================
 func (t *VersityChaincode) Invoke(stub shim.ChaincodeStubInterface) peer.Response {
 	function, args := stub.GetFunctionAndParameters()
-	//fmt.Println("invoke is running " + function)
 
 	// Handle different functions
 	if function == "initRecord" { //create a new record
@@ -74,7 +73,6 @@ func (t *VersityChaincode) Invoke(stub shim.ChaincodeStubInterface) peer.Respons
 		return t.getHistoryForRecord(stub, args)
 	}
 
-	fmt.Println("invoke did not find func: " + function) //error
 	return shim.Error("Received unknown function invocation")
 }
 
@@ -85,13 +83,12 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 	var err error
 
 	//  0      1        2       3                         4                                     5                         6      7          8
-	// "32", "dylan", "bryan", "200049641", "North Carolina State University", "Bachelor of Science in Computer Science", "4.0", "4.0", "OWNERHASH12345"
+	// "32", "dylan", "bryan", "200049641", "North Carolina State University", "Bachelor of Science in Computer Science", "4.0", "4.0", "OwnerSignature"
 	if len(args) != initNumArgs {
 		return shim.Error("Incorrect number of arguments. Expecting 9")
 	}
 
 	// ==== Input sanitation ====
-	//fmt.Println("- start init record")
 	if len(args[0]) <= 0 {
 		return shim.Error("1st argument must be a non-empty string")
 	}
@@ -119,7 +116,6 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 	if len(args[8]) <= 0 {
 		return shim.Error("9th argument must be a non-empty string")
 	}
-
 
 	recordId, err := strconv.Atoi(args[0])
 	if err != nil {
@@ -163,7 +159,6 @@ func (t *VersityChaincode) initRecord(stub shim.ChaincodeStubInterface, args []s
 	//TODO: add index to find records by owner
 
 	// ==== Record saved. Return success ====
-	//fmt.Println("- end init record")
 	return shim.Success(nil)
 }
 
@@ -187,8 +182,11 @@ func (t *VersityChaincode) readRecord(stub shim.ChaincodeStubInterface, args []s
 		return shim.Error("2nd argument must be a non-empty string")
 	}
 
-	recordId = strconv.Atoi(args[0])
-
+	recordId = args[0]
+	recordIdInt, err := strconv.Atoi(args[0])
+	if err != nil {
+		return shim.Error("1st argument must be a numeric string")
+	}
 
 	valAsbytes, err := stub.GetState(recordId) //get the record from chaincode state
 	if err != nil {
@@ -235,14 +233,15 @@ func (t *VersityChaincode) readRecord(stub shim.ChaincodeStubInterface, args []s
 }
 
 func (t *VersityChaincode) validateRecord(stub shim.ChaincodeStubInterface, args []string) peer.Response {
-	//args needed: recordId,
+	// args needed: recordId
+	// in future this will need the signature of the validating official
 	if len(args) != 1 {
 		return shim.Error("Incorrect number of arguments")
 	}
 
 	recordId := args[0]
 
-	valAsBytes, err := stub.GetState(recordId) //get the record from chaincode state
+	valAsBytes, err := stub.GetState(recordId) // get the record from chaincode state
 	if err != nil {
 		return shim.Error("Failed to get state for Record ID: " + recordId)
 	} else if valAsBytes == nil {
@@ -270,11 +269,10 @@ func (t *VersityChaincode) validateRecord(stub shim.ChaincodeStubInterface, args
 	}
 
 	return shim.Success(nil)
-
 }
 
 //
-// private function
+// Function for adding a viewer to a record
 //
 func addViewer(stub shim.ChaincodeStubInterface, recordId, owner, viewer string) bool {
 	var recordWrapper recordWithPermissions
@@ -315,12 +313,9 @@ func addViewer(stub shim.ChaincodeStubInterface, recordId, owner, viewer string)
 			return false
 		}
 		return true
-	} else {
-		return false
 	}
 
-
-
+	return false
 }
 
 func (t *VersityChaincode) addViewerToRecords(stub shim.ChaincodeStubInterface, args []string) peer.Response {
@@ -457,8 +452,6 @@ func getQueryResultForQueryString(stub shim.ChaincodeStubInterface, queryString 
 	}
 	buffer.WriteString("]")
 
-	//fmt.Printf("- getQueryResultForQueryString queryResult:\n%s\n", buffer.String())
-
 	return buffer.Bytes(), nil
 }
 
@@ -469,8 +462,6 @@ func (t *VersityChaincode) getHistoryForRecord(stub shim.ChaincodeStubInterface,
 	}
 
 	recordId := args[0]
-
-	//fmt.Printf("- start getHistoryForRecord: %s\n", recordId)
 
 	resultsIterator, err := stub.GetHistoryForKey(recordId)
 	if err != nil {
@@ -512,8 +503,6 @@ func (t *VersityChaincode) getHistoryForRecord(stub shim.ChaincodeStubInterface,
 		bArrayMemberAlreadyWritten = true
 	}
 	buffer.WriteString("]")
-
-	//fmt.Printf("- getHistoryForRecord returning:\n%s\n", buffer.String())
 
 	return shim.Success(buffer.Bytes())
 }
